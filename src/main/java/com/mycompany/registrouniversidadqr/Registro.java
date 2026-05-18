@@ -2,7 +2,6 @@ package com.mycompany.registrouniversidadqr;
 
 /**
  * Representa el registro de una persona dentro del sistema universitario.
- * Contiene nombres, cédula, fecha, hora de ingreso y hora de salida.
  */
 public class Registro {
 
@@ -16,8 +15,8 @@ public class Registro {
      * Constructor de la clase Registro.
      *
      * @param nombresApellidos nombres y apellidos de la persona
-     * @param cedula número de cédula de la persona
-     * @param fecha fecha del registro en formato año/mes/día
+     * @param cedula número de cédula
+     * @param fecha fecha del registro
      * @param ingreso hora de ingreso
      * @param salida hora de salida
      */
@@ -30,11 +29,28 @@ public class Registro {
     }
 
     /**
-     * Convierte los datos del registro en una línea CSV.
+     * Convierte el registro a formato CSV.
      *
-     * @return línea de texto en formato CSV
+     * @return línea CSV
      */
     public String convertirCSV() {
-        return nombresApellidos + "," + cedula + "," + fecha + "," + ingreso + "," + salida;
+        return escaparCSV(nombresApellidos) + ","
+                + escaparCSV(cedula) + ","
+                + escaparCSV(fecha) + ","
+                + escaparCSV(ingreso) + ","
+                + escaparCSV(salida);
+    }
+
+    private String escaparCSV(String valor) {
+        if (valor == null) {
+            return "";
+        }
+
+        if (valor.contains(",") || valor.contains("\"") || valor.contains("\n")) {
+            valor = valor.replace("\"", "\"\"");
+            return "\"" + valor + "\"";
+        }
+
+        return valor;
     }
 }

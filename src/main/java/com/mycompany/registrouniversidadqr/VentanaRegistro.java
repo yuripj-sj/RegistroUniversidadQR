@@ -21,7 +21,7 @@ public class VentanaRegistro extends JFrame {
         registroCSV = new RegistroCSV();
 
         setTitle("Sistema de Registro Universitario QR");
-        setSize(650, 520);
+        setSize(650, 560);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setResizable(false);
@@ -80,14 +80,18 @@ public class VentanaRegistro extends JFrame {
 
         JButton btnIngreso = crearBoton("Registrar Ingreso", new Color(35, 130, 80));
         JButton btnSalida = crearBoton("Registrar Salida", new Color(190, 70, 70));
+        JButton btnCamaraQR = crearBoton("Leer QR con Cámara", new Color(25, 80, 150));
+        JButton btnProcesarQR = crearBoton("Procesar QR", new Color(120, 90, 170));
         JButton btnLimpiar = crearBoton("Limpiar Campos", new Color(90, 100, 115));
 
-        JPanel panelBotones = new JPanel(new GridLayout(2, 2, 15, 15));
+        JPanel panelBotones = new JPanel(new GridLayout(3, 2, 15, 15));
         panelBotones.setBackground(Color.WHITE);
         panelBotones.setBorder(BorderFactory.createEmptyBorder(20, 0, 0, 0));
 
         panelBotones.add(btnIngreso);
         panelBotones.add(btnSalida);
+        panelBotones.add(btnCamaraQR);
+        panelBotones.add(btnProcesarQR);
         panelBotones.add(btnLimpiar);
 
         gbc.gridx = 0;
@@ -95,7 +99,10 @@ public class VentanaRegistro extends JFrame {
         gbc.gridwidth = 2;
         formulario.add(panelBotones, gbc);
 
-        JLabel nota = new JLabel("Formato QR recomendado: Nombres Apellidos;Cédula", SwingConstants.CENTER);
+        JLabel nota = new JLabel(
+                "QR aceptado: Nombres Apellidos;Cédula o URL del Registro Civil",
+                SwingConstants.CENTER
+        );
         nota.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         nota.setForeground(new Color(100, 100, 100));
 
@@ -113,6 +120,8 @@ public class VentanaRegistro extends JFrame {
 
         btnIngreso.addActionListener(e -> registrar("INGRESO"));
         btnSalida.addActionListener(e -> registrar("SALIDA"));
+        btnCamaraQR.addActionListener(e -> abrirCamaraQR());
+        btnProcesarQR.addActionListener(e -> procesarQR());
         btnLimpiar.addActionListener(e -> limpiarCampos());
 
         txtQR.addActionListener(e -> procesarQR());
@@ -158,8 +167,32 @@ public class VentanaRegistro extends JFrame {
         panel.add(campo, gbc);
     }
 
+    private void abrirCamaraQR() {
+        LectorCamaraQR lector = new LectorCamaraQR(this, textoQR -> {
+            txtQR.setText(textoQR);
+            procesarQR();
+        });
+
+        lector.setVisible(true);
+    }
+
     private void procesarQR() {
         String datosQR = txtQR.getText().trim();
+
+        if (datosQR.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Debe ingresar o leer un código QR primero.",
+                    "QR vacío",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        if (datosQR.startsWith("https://qr.registrocivil.gob.ec/qr")) {
+            consultarCedulaRegistroCivil(datosQR);
+            return;
+        }
 
         if (datosQR.contains(";")) {
             String[] datos = datosQR.split(";");
@@ -167,20 +200,101 @@ public class VentanaRegistro extends JFrame {
             if (datos.length >= 2) {
                 txtNombres.setText(datos[0].trim());
                 txtCedula.setText(datos[1].trim());
+
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Datos del QR extraídos correctamente.\n\n"
+                        + "Nombre: " + txtNombres.getText() + "\n"
+                        + "Cédula: " + txtCedula.getText(),
+                        "QR procesado",
+                        JOptionPane.INFORMATION_MESSAGE
+                );
+            } else {
+                mostrarErrorFormatoQR();
             }
         } else {
             txtCedula.setText(datosQR);
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "El QR solo contiene una cédula.\n\n"
+                    + "Complete manualmente los nombres y apellidos.",
+                    "QR procesado parcialmente",
+                    JOptionPane.WARNING_MESSAGE
+            );
         }
+    }
+
+    private void consultarCedulaRegistroCivil(String url) {
+        txtNombres.setText("Consultando Registro Civil...");
+        txtCedula.setText("");
+
+        SwingWorker<RegistroCivilService.DatosCedula, Void> worker = new SwingWorker<>() {
+
+            @Override
+            protected RegistroCivilService.DatosCedula doInBackground() throws Exception {
+                RegistroCivilService servicio = new RegistroCivilService();
+                return servicio.consultar(url);
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    RegistroCivilService.DatosCedula datos = get();
+
+                    txtNombres.setText(datos.getNombresApellidos());
+                    txtCedula.setText(datos.getCedula());
+
+                    JOptionPane.showMessageDialog(
+                            VentanaRegistro.this,
+                            "Datos extraídos correctamente desde el Registro Civil.\n\n"
+                            + "Nombre: " + datos.getNombresApellidos() + "\n"
+                            + "Cédula: " + datos.getCedula()
+                            + "\n\nAhora puede registrar el ingreso o la salida.",
+                            "Datos obtenidos",
+                            JOptionPane.INFORMATION_MESSAGE
+                    );
+
+                } catch (Exception e) {
+                    txtNombres.setText("");
+                    txtCedula.setText("");
+
+                    JOptionPane.showMessageDialog(
+                            VentanaRegistro.this,
+                            "No se pudieron obtener los datos desde el Registro Civil.\n\n"
+                            + "Verifique conexión a internet o pruebe nuevamente.\n\n"
+                            + "Detalle:\n" + e.getMessage(),
+                            "Error de consulta",
+                            JOptionPane.ERROR_MESSAGE
+                    );
+                }
+            }
+        };
+
+        worker.execute();
+    }
+
+    private void mostrarErrorFormatoQR() {
+        JOptionPane.showMessageDialog(
+                this,
+                "Formato de QR no reconocido.\n\n"
+                + "Formatos aceptados:\n"
+                + "1. Nombres Apellidos;Cédula\n"
+                + "2. URL del Registro Civil\n"
+                + "3. Solo número de cédula",
+                "Formato no válido",
+                JOptionPane.WARNING_MESSAGE
+        );
     }
 
     private void registrar(String tipoRegistro) {
         String nombres = txtNombres.getText().trim();
         String cedula = txtCedula.getText().trim();
 
-        if (nombres.isEmpty() || cedula.isEmpty()) {
+        if (nombres.isEmpty() || cedula.isEmpty() || nombres.equals("Consultando Registro Civil...")) {
             JOptionPane.showMessageDialog(
                     this,
-                    "Debe ingresar los nombres y la cédula.",
+                    "Debe tener cargados los nombres y la cédula antes de registrar.",
                     "Datos incompletos",
                     JOptionPane.WARNING_MESSAGE
             );
@@ -203,18 +317,29 @@ public class VentanaRegistro extends JFrame {
 
         try {
             registroCSV.guardarRegistro(registro);
+
             JOptionPane.showMessageDialog(
                     this,
-                    tipoRegistro + " registrado correctamente.",
-                    "Registro exitoso",
+                    tipoRegistro + " registrado correctamente.\n\n"
+                    + "Nombre: " + nombres + "\n"
+                    + "Cédula: " + cedula + "\n\n"
+                    + "Archivo guardado en:\n"
+                    + registroCSV.obtenerRutaArchivo(),
+                    "Registro guardado",
                     JOptionPane.INFORMATION_MESSAGE
             );
+
             limpiarCampos();
+
         } catch (IOException e) {
             JOptionPane.showMessageDialog(
                     this,
-                    "Error al guardar el registro.",
-                    "Error",
+                    "No se pudo guardar el registro.\n\n"
+                    + "Ruta intentada:\n"
+                    + registroCSV.obtenerRutaArchivo()
+                    + "\n\nDetalle del error:\n"
+                    + e.getMessage(),
+                    "Error de guardado",
                     JOptionPane.ERROR_MESSAGE
             );
         }
